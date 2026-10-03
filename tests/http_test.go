@@ -336,3 +336,119 @@ func TestCreateTransferHTTP_TrailingJSONIsRejected(t *testing.T) {
 		)
 	}
 }
+
+func TestCreateTransferHTTP_MissingWalletID(t *testing.T) {
+	pool := newTestPool(t)
+	resetDatabase(t, pool)
+	seedWallets(t, pool)
+
+	repo := repository.NewPostgresRepository(pool)
+	transferService := service.NewTransferService(repo)
+	transferHandler := handler.NewTransferHandler(transferService)
+
+	body := `{
+		"idempotencyKey": "missing-wallet-id",
+		"fromWalletId": "",
+		"toWalletId": "wallet_2",
+		"amount": 100
+	}`
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/transfers",
+		bytes.NewBufferString(body),
+	)
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+
+	transferHandler.CreateTransfer(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf(
+			"status = %d, want %d",
+			recorder.Code,
+			http.StatusBadRequest,
+		)
+	}
+}
+
+func TestCreateTransferHTTP_IdempotencyConflictBeforeValidation(
+	t *testing.T,
+) {
+	pool := newTestPool(t)
+	resetDatabase(t, pool)
+	seedWallets(t, pool)
+
+	repo := repository.NewPostgresRepository(pool)
+	transferService := service.NewTransferService(repo)
+	transferHandler := handler.NewTransferHandler(transferService)
+
+	firstBody := `{
+		"idempotencyKey": "validation-conflict-1",
+		"fromWalletId": "wallet_1",
+		"toWalletId": "wallet_2",
+		"amount": 100
+	}`
+
+	firstReq := httptest.NewRequest(
+		http.MethodPost,
+		"/transfers",
+		bytes.NewBufferString(firstBody),
+	)
+	firstReq.Header.Set("Content-Type", "application/json")
+
+	firstRecorder := httptest.NewRecorder()
+
+	transferHandler.CreateTransfer(firstRecorder, firstReq)
+
+	if firstRecorder.Code != http.StatusOK {
+		t.Fatalf(
+			"first status = %d, want %d",
+			firstRecorder.Code,
+			http.StatusOK,
+		)
+	}
+
+	secondBody := `{
+		"idempotencyKey": "validation-conflict-1",
+		"fromWalletId": "wallet_1",
+		"toWalletId": "wallet_2",
+		"amount": 0
+	}`
+
+	secondReq := httptest.NewRequest(
+		http.MethodPost,
+		"/transfers",
+		bytes.NewBufferString(secondBody),
+	)
+	secondReq.Header.Set("Content-Type", "application/json")
+
+	secondRecorder := httptest.NewRecorder()
+
+	transferHandler.CreateTransfer(secondRecorder, secondReq)
+
+	if secondRecorder.Code != http.StatusConflict {
+		t.Fatalf(
+			"second status = %d, want %d",
+			secondRecorder.Code,
+			http.StatusConflict,
+		)
+	}
+
+	requireBalance(t, pool, "wallet_1", 900)
+	requireBalance(t, pool, "wallet_2", 600)
+
+	transferCount := countRows(
+		t,
+		pool,
+		"SELECT COUNT(*) FROM transfers",
+	)
+
+	if transferCount != 1 {
+		t.Fatalf(
+			"transfers = %d, want 1",
+			transferCount,
+		)
+	}
+}

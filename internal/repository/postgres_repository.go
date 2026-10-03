@@ -25,6 +25,52 @@ func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 	}
 }
 
+func (r *PostgresRepository) GetTransferByIdempotencyKey(
+	ctx context.Context,
+	idempotencyKey string,
+) (*domain.Transfer, error) {
+	const query = `
+		SELECT
+			id,
+			idempotency_key,
+			from_wallet_id,
+			to_wallet_id,
+			amount,
+			status,
+			created_at,
+			updated_at
+		FROM transfers
+		WHERE idempotency_key = $1
+	`
+
+	var transfer domain.Transfer
+
+	err := r.pool.QueryRow(
+		ctx,
+		query,
+		idempotencyKey,
+	).Scan(
+		&transfer.ID,
+		&transfer.IdempotencyKey,
+		&transfer.FromWalletID,
+		&transfer.ToWalletID,
+		&transfer.Amount,
+		&transfer.Status,
+		&transfer.CreatedAt,
+		&transfer.UpdatedAt,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrTransferNotFound
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("get transfer by idempotency key: %w", err)
+	}
+
+	return &transfer, nil
+}
+
 func (r *PostgresRepository) WithTx(
 	ctx context.Context,
 	fn func(context.Context, TransferStore) error,

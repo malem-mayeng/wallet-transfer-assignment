@@ -11,6 +11,11 @@ type Repository interface {
 		ctx context.Context,
 		fn func(context.Context, TransferStore) error,
 	) error
+
+	GetTransferByIdempotencyKey(
+		ctx context.Context,
+		idempotencyKey string,
+	) (*domain.Transfer, error)
 }
 
 type TransferStore interface {

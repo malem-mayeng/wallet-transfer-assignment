@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -11,7 +12,10 @@ import (
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
-	databaseURL := "postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable"
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Fatal("TEST_DATABASE_URL is not set")
+	}
 
 	pool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {

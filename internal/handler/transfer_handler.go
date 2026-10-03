@@ -81,7 +81,8 @@ func (h *TransferHandler) CreateTransfer(w http.ResponseWriter, r *http.Request)
 		switch {
 		case errors.Is(err, domain.ErrInvalidAmount),
 			errors.Is(err, domain.ErrSameWallet),
-			errors.Is(err, domain.ErrInvalidIdempotencyKey):
+			errors.Is(err, domain.ErrInvalidIdempotencyKey),
+			errors.Is(err, domain.ErrInvalidWalletID):
 			writeJSON(w, http.StatusBadRequest, errorResponse{
 				Error: err.Error(),
 			})

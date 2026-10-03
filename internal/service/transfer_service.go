@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sort"
 
 	"github.com/malem-mayeng/wallet-transfer-assignment/internal/domain"
@@ -29,6 +30,33 @@ func (s *TransferService) CreateTransfer(
 	ctx context.Context,
 	req CreateTransferRequest,
 ) (*domain.Transfer, error) {
+	if req.IdempotencyKey == "" {
+		return nil, domain.ErrInvalidIdempotencyKey
+	}
+
+	existingTransfer, err := s.repo.GetTransferByIdempotencyKey(
+		ctx,
+		req.IdempotencyKey,
+	)
+
+	switch {
+	case err == nil:
+		if existingTransfer.FromWalletID != req.FromWalletID ||
+			existingTransfer.ToWalletID != req.ToWalletID ||
+			existingTransfer.Amount != req.Amount {
+			return nil, domain.ErrIdempotencyConflict
+		}
+
+		return existingTransfer, nil
+
+	case !errors.Is(err, domain.ErrTransferNotFound):
+		return nil, err
+	}
+
+	if req.FromWalletID == "" || req.ToWalletID == "" {
+		return nil, domain.ErrInvalidWalletID
+	}
+
 	if req.Amount <= 0 {
 		return nil, domain.ErrInvalidAmount
 	}
@@ -36,13 +64,9 @@ func (s *TransferService) CreateTransfer(
 	if req.FromWalletID == req.ToWalletID {
 		return nil, domain.ErrSameWallet
 	}
-
-	if req.IdempotencyKey == "" {
-		return nil, domain.ErrInvalidIdempotencyKey
-	}
 	var result *domain.Transfer
 
-	err := s.repo.WithTx(ctx, func(
+	err = s.repo.WithTx(ctx, func(
 		ctx context.Context,
 		store repository.TransferStore,
 	) error {

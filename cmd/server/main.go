@@ -42,14 +42,20 @@ func main() {
 
 	mux.HandleFunc("POST /transfers", transferHandler.CreateTransfer)
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	addr := ":" + port
 	server := &http.Server{
-		Addr:              ":8080",
+		Addr:              addr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
-		log.Println("server listening on :8080")
+		log.Println("server listening on " + addr)
 
 		if err := server.ListenAndServe(); err != nil &&
 			err != http.ErrServerClosed {
